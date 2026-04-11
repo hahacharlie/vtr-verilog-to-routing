@@ -1400,6 +1400,16 @@ static vtr::vector<ClusterBlockId, t_block_score> assign_block_scores(const Plac
             double floorplan_score = get_floorplan_score(blk_id, pr, block_type, grid_tiles);
             block_scores[blk_id].tiles_outside_of_floorplan_constraints = floorplan_score;
         }
+        // Count non-ignored net pins for connectivity-based ordering.
+        // High-connectivity blocks placed first provide better centroid anchors.
+        int connectivity = 0;
+        for (ClusterPinId pin_id : cluster_ctx.clb_nlist.block_pins(blk_id)) {
+            ClusterNetId net_id = cluster_ctx.clb_nlist.pin_net(pin_id);
+            if (!cluster_ctx.clb_nlist.net_is_ignored(net_id)) {
+                connectivity++;
+            }
+        }
+        block_scores[blk_id].net_connectivity = connectivity;
     }
 
     //go through placement macros and store size of macro for each block
@@ -1431,8 +1441,8 @@ static void place_all_blocks(const t_placer_opts& placer_opts,
     std::unordered_set<int> unplaced_blk_type_in_curr_itr;
 
     auto criteria = [&block_scores](ClusterBlockId lhs, ClusterBlockId rhs) {
-        int lhs_score = block_scores[lhs].macro_size + block_scores[lhs].number_of_placed_connections + SORT_WEIGHT_PER_TILES_OUTSIDE_OF_PR * block_scores[lhs].tiles_outside_of_floorplan_constraints + SORT_WEIGHT_PER_FAILED_BLOCK * block_scores[lhs].failed_to_place_in_prev_attempts;
-        int rhs_score = block_scores[rhs].macro_size + block_scores[rhs].number_of_placed_connections + SORT_WEIGHT_PER_TILES_OUTSIDE_OF_PR * block_scores[rhs].tiles_outside_of_floorplan_constraints + SORT_WEIGHT_PER_FAILED_BLOCK * block_scores[rhs].failed_to_place_in_prev_attempts;
+        int lhs_score = block_scores[lhs].macro_size + block_scores[lhs].number_of_placed_connections + block_scores[lhs].net_connectivity + SORT_WEIGHT_PER_TILES_OUTSIDE_OF_PR * block_scores[lhs].tiles_outside_of_floorplan_constraints + SORT_WEIGHT_PER_FAILED_BLOCK * block_scores[lhs].failed_to_place_in_prev_attempts;
+        int rhs_score = block_scores[rhs].macro_size + block_scores[rhs].number_of_placed_connections + block_scores[rhs].net_connectivity + SORT_WEIGHT_PER_TILES_OUTSIDE_OF_PR * block_scores[rhs].tiles_outside_of_floorplan_constraints + SORT_WEIGHT_PER_FAILED_BLOCK * block_scores[rhs].failed_to_place_in_prev_attempts;
 
         return lhs_score < rhs_score;
     };

@@ -38,6 +38,9 @@ struct t_block_score {
 
     //The number of placed block during initial placement that are connected to the this block.
     int number_of_placed_connections = 0;
+    //Total number of non-ignored net pins on this block.
+    //High-connectivity blocks are placed first to anchor centroid calculations for neighbors.
+    int net_connectivity = 0;
 };
 
 /**
