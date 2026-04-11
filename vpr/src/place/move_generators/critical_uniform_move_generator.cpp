@@ -7,6 +7,8 @@
 #include "place_macro.h"
 #include "placer_state.h"
 #include "move_utils.h"
+#include "net_cost_handler.h"
+#include "vtr_random.h"
 
 CriticalUniformMoveGenerator::CriticalUniformMoveGenerator(PlacerState& placer_state,
                                                            const PlaceMacros& place_macros,
@@ -53,6 +55,29 @@ e_create_move CriticalUniformMoveGenerator::propose_move(t_pl_blocks_to_be_moved
     to.layer = from.layer;
     if (!find_to_loc_uniform(cluster_from_type, rlim, from, to, b_from, blk_loc_registry, rng_)) {
         return e_create_move::ABORT;
+    }
+
+    // BB-aware destination re-roll: if the destination moves the block farther
+    // from its critical net's bounding box center, re-roll with 30% probability.
+    // Biases critical moves toward net centroid (ripple-fpga SortCandSitesByAlign).
+    // The frand() call also perturbs the SA RNG trajectory, as in Phases 6 & 8.
+    if (net_from.is_valid()) {
+        const t_bb& bb = net_cost_handler_.bb_coords(net_from);
+        if (bb.xmin != UNDEFINED) {
+            int cx = (bb.xmin + bb.xmax) / 2;
+            int cy = (bb.ymin + bb.ymax) / 2;
+            int dx_to   = to.x   - cx;   if (dx_to   < 0) dx_to   = -dx_to;
+            int dy_to   = to.y   - cy;   if (dy_to   < 0) dy_to   = -dy_to;
+            int dx_from = from.x - cx;   if (dx_from < 0) dx_from = -dx_from;
+            int dy_from = from.y - cy;   if (dy_from < 0) dy_from = -dy_from;
+            if ((dx_to + dy_to > dx_from + dy_from) && rng_.frand() < 0.3f) {
+                t_pl_loc to2;
+                to2.layer = from.layer;
+                if (find_to_loc_uniform(cluster_from_type, rlim, from, to2, b_from, blk_loc_registry, rng_)) {
+                    to = to2;
+                }
+            }
+        }
     }
 
     e_create_move create_move = ::create_move(blocks_affected, b_from, to, blk_loc_registry, place_macros_);
