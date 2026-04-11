@@ -681,7 +681,15 @@ ClusterBlockId pick_from_highly_critical_block(ClusterNetId& net_from,
             }
         }
     }
-    ClusterBlockId b_from = cluster_ctx.clb_nlist.net_driver_block(crit_pin.first);
+    // Coin flip: move driver or sink of the critical connection.
+    // AMF-Placer targets both endpoints of critical paths; doing so here
+    // also changes the RNG consumption pattern, exploring different SA basins.
+    ClusterBlockId b_from;
+    if (rng.frand() < 0.5f) {
+        b_from = cluster_ctx.clb_nlist.net_driver_block(crit_pin.first);
+    } else {
+        b_from = cluster_ctx.clb_nlist.pin_block(cluster_ctx.clb_nlist.net_pin(crit_pin.first, crit_pin.second));
+    }
 
     auto b_from_type = cluster_ctx.clb_nlist.block_type(b_from);
 
