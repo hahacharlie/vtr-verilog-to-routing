@@ -658,8 +658,23 @@ ClusterBlockId pick_from_highly_critical_block(ClusterNetId& net_from,
         return ClusterBlockId::INVALID();
     }
 
-    //pick a random highly critical pin and find the nets driver block
-    std::pair<ClusterNetId, int> crit_pin = highly_crit_pins[rng.irand(highly_crit_pins.size() - 1)];
+    // Tournament selection: pick 2 random critical pins and use the more critical one.
+    // This biases FR and CRIT_UNIFORM moves toward the actual bottleneck connections
+    // without eliminating exploration of less-critical ones. Overhead: one extra
+    // random number + one criticality lookup per call.
+    std::pair<ClusterNetId, int> crit_pin;
+    if (highly_crit_pins.size() >= 2) {
+        int idx1 = rng.irand(highly_crit_pins.size() - 1);
+        int idx2 = rng.irand(highly_crit_pins.size() - 2);
+        if (idx2 >= idx1) idx2++;  // ensure idx2 != idx1
+        const auto& pin1 = highly_crit_pins[idx1];
+        const auto& pin2 = highly_crit_pins[idx2];
+        float crit1 = placer_criticalities.criticality(pin1.first, pin1.second);
+        float crit2 = placer_criticalities.criticality(pin2.first, pin2.second);
+        crit_pin = (crit1 >= crit2) ? pin1 : pin2;
+    } else {
+        crit_pin = highly_crit_pins[0];
+    }
     ClusterBlockId b_from = cluster_ctx.clb_nlist.net_driver_block(crit_pin.first);
 
     auto b_from_type = cluster_ctx.clb_nlist.block_type(b_from);
