@@ -929,7 +929,26 @@ void Prepacker::alloc_and_load_pack_molecules(std::multimap<AtomBlockId, PackMol
 
             new_molecule.atom_block_ids = {blk_id};
 
-            new_molecule.base_gain = 1;
+            // Connectivity-weighted base_gain inspired by FPGAPart coarsener's
+            // GetNormEdgeScore: atoms with many low-fanout data connections get
+            // higher base_gain, improving unrelated clustering fill order.
+            float connectivity_score = 0.0f;
+            constexpr int HIGH_FANOUT_SKIP = 20;
+            for (auto pin_id : atom_nlist.block_output_pins(blk_id)) {
+                auto net_id = atom_nlist.pin_net(pin_id);
+                if (!net_id.is_valid()) continue;
+                int fanout = static_cast<int>(atom_nlist.net_pins(net_id).size());
+                if (fanout > HIGH_FANOUT_SKIP || fanout <= 1) continue;
+                connectivity_score += 1.0f / static_cast<float>(fanout - 1);
+            }
+            for (auto pin_id : atom_nlist.block_input_pins(blk_id)) {
+                auto net_id = atom_nlist.pin_net(pin_id);
+                if (!net_id.is_valid()) continue;
+                int fanout = static_cast<int>(atom_nlist.net_pins(net_id).size());
+                if (fanout > HIGH_FANOUT_SKIP || fanout <= 1) continue;
+                connectivity_score += 1.0f / static_cast<float>(fanout - 1);
+            }
+            new_molecule.base_gain = 1.0f + 0.01f * connectivity_score;
             new_molecule.chain_id = MoleculeChainId::INVALID();
 
             atom_molecules_multimap.insert({blk_id, new_molecule_id});
