@@ -658,8 +658,29 @@ ClusterBlockId pick_from_highly_critical_block(ClusterNetId& net_from,
         return ClusterBlockId::INVALID();
     }
 
-    //pick a random highly critical pin and find the nets driver block
-    std::pair<ClusterNetId, int> crit_pin = highly_crit_pins[rng.irand(highly_crit_pins.size() - 1)];
+    //pick a criticality-squared weighted random highly critical pin
+    //Higher criticality pins are selected more often (weight = crit^2),
+    //focusing SA moves on the most timing-critical connections.
+    //Inspired by AMF-Placer PlacementTimingOptimizer critical-path targeting.
+    std::pair<ClusterNetId, int> crit_pin;
+    {
+        float total_weight = 0.0f;
+        for (const auto& pin : highly_crit_pins) {
+            float c = placer_criticalities.criticality(pin.first, pin.second);
+            total_weight += c * c;
+        }
+        float target = rng.frand() * total_weight;
+        float cumulative = 0.0f;
+        crit_pin = highly_crit_pins.back(); // fallback if frand() returns 1.0
+        for (const auto& pin : highly_crit_pins) {
+            float c = placer_criticalities.criticality(pin.first, pin.second);
+            cumulative += c * c;
+            if (cumulative > target) {
+                crit_pin = pin;
+                break;
+            }
+        }
+    }
     ClusterBlockId b_from = cluster_ctx.clb_nlist.net_driver_block(crit_pin.first);
 
     auto b_from_type = cluster_ctx.clb_nlist.block_type(b_from);
