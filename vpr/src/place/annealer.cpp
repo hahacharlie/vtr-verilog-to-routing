@@ -158,7 +158,11 @@ bool t_annealing_state::outer_loop_update(float success_rate,
     } else if (success_rate > 0.15 || rlim > 1.) {
         alpha = 0.95;
     } else {
-        alpha = 0.8;
+        // Gentler late-anneal cooling: when success_rate <= 0.15 and rlim <= 1.0,
+        // the anneal is in its final timing-refinement phase. Convex crit_exponent
+        // and timing_tradeoff=0.7 peak here; more temperature steps improve timing.
+        // Changed from 0.8 to 0.9 to give ~2x more low-temperature refinement steps.
+        alpha = 0.9;
     }
     // Update temp.
     t *= alpha;
