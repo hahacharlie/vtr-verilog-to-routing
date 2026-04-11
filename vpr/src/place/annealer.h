@@ -348,6 +348,9 @@ class PlacementAnnealer {
     bool quench_started_;
     /// Indicates whether routing congestion modeling has been started
     bool congestion_modeling_started_;
+    /// Dynamic timing tradeoff ramping from 0.3 (WL-focused) to 0.7 (timing-focused)
+    /// across 5 equal phases of the anneal, driven by rlim progress.
+    float current_timing_tradeoff_;
 
     void LOG_MOVE_STATS_HEADER();
     void LOG_MOVE_STATS_PROPOSED();

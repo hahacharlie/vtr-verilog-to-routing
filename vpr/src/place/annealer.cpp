@@ -236,7 +236,8 @@ PlacementAnnealer::PlacementAnnealer(const t_placer_opts& placer_opts,
     , outer_crit_iter_count_(1)
     , blocks_affected_(placer_state.block_locs().size())
     , quench_started_(false)
-    , congestion_modeling_started_(false) {
+    , congestion_modeling_started_(false)
+    , current_timing_tradeoff_(0.3f) {
     const auto& device_ctx = g_vpr_ctx.device();
 
     float first_crit_exponent;
@@ -605,11 +606,11 @@ t_swap_result PlacementAnnealer::try_swap_(MoveGenerator& move_generator,
                            "timing_delta_c %e, timing_cost_norm %e\n",
                            bb_delta_c,
                            costs_.bb_cost_norm,
-                           placer_opts_.timing_tradeoff,
+                           current_timing_tradeoff_,
                            timing_delta_c,
                            costs_.timing_cost_norm);
-            delta_c = (1 - placer_opts_.timing_tradeoff) * bb_delta_c * costs_.bb_cost_norm
-                      + placer_opts_.timing_tradeoff * timing_delta_c * costs_.timing_cost_norm
+            delta_c = (1 - current_timing_tradeoff_) * bb_delta_c * costs_.bb_cost_norm
+                      + current_timing_tradeoff_ * timing_delta_c * costs_.timing_cost_norm
                       + placer_opts_.congestion_factor * congestion_delta_c * costs_.congestion_cost_norm;
         } else if (place_algorithm == e_place_algorithm::SLACK_TIMING_PLACE) {
             /* For setup slack analysis, we first do a timing analysis to get the newest
@@ -836,11 +837,35 @@ void PlacementAnnealer::outer_loop_update_timing_info() {
         }
     }
 
+    // 5-phase timing_tradeoff ramp: 0.3->0.4->0.5->0.6->0.7 over the anneal
+    // Progress tracks rlim from first_rlim (start) down to 1.0 (end)
+    if (placer_opts_.place_algorithm.is_timing_driven()) {
+        float first_rlim_val = MoveGenerator::first_rlim;
+        float progress = (first_rlim_val > 1.0f)
+            ? 1.0f - (annealing_state_.rlim - 1.0f) / (first_rlim_val - 1.0f)
+            : 1.0f;
+        progress = std::max(0.0f, std::min(1.0f, progress));
+        constexpr int N_PHASES = 5;
+        constexpr float TRADEOFF_START = 0.3f;
+        constexpr float TRADEOFF_STEP = 0.1f; // (0.7 - 0.3) / (5 - 1)
+        int phase = std::min((int)(progress * N_PHASES), N_PHASES - 1);
+        current_timing_tradeoff_ = TRADEOFF_START + phase * TRADEOFF_STEP;
+    }
+
     // Update the cost normalization factors
     costs_.update_norm_factors();
 
-    // update the current total placement cost
-    costs_.cost = costs_.get_total_cost(placer_opts_, noc_opts_);
+    // update the current total placement cost using dynamic timing_tradeoff
+    if (placer_opts_.place_algorithm.is_timing_driven()) {
+        costs_.cost = (1 - current_timing_tradeoff_) * (costs_.bb_cost * costs_.bb_cost_norm)
+                    + current_timing_tradeoff_ * (costs_.timing_cost * costs_.timing_cost_norm);
+        costs_.cost += placer_opts_.congestion_factor * costs_.congestion_cost * costs_.congestion_cost_norm;
+        if (noc_opts_.noc) {
+            costs_.cost += calculate_noc_cost(costs_.noc_cost_terms, costs_.noc_cost_norm_factors, noc_opts_);
+        }
+    } else {
+        costs_.cost = costs_.get_total_cost(placer_opts_, noc_opts_);
+    }
 }
 
 void PlacementAnnealer::placement_inner_loop() {
