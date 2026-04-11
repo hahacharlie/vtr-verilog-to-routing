@@ -98,14 +98,57 @@ static inline float get_seed_gain(AtomBlockId blk_id,
             float num_blocks_ratio = vtr::safe_ratio<float>(molecule_stats.num_blocks, max_molecule_stats.num_blocks);
             float criticality = atom_criticality[blk_id];
 
+            // Compute neighbor absorption potential (inspired by FPGAPart coarsener
+            // connectivity-weighted vertex matching). Rewards molecules whose direct
+            // neighbors are timing-critical and tightly connected (low-fanout nets),
+            // making them better seeds for absorbing critical logic into one cluster.
+            float neighbor_absorption = 0.0f;
+            int nets_processed = 0;
+            constexpr int HIGH_FANOUT_SKIP = 20;
+
+            // Output-side neighbors: sinks driven by this molecule
+            for (AtomPinId pin_id : atom_netlist.block_output_pins(blk_id)) {
+                AtomNetId net_id = atom_netlist.pin_net(pin_id);
+                if (!net_id.is_valid()) continue;
+                int fanout = static_cast<int>(atom_netlist.net_pins(net_id).size());
+                if (fanout > HIGH_FANOUT_SKIP || fanout <= 1) continue;
+                float inv_fanout = 1.0f / static_cast<float>(fanout);
+                for (AtomPinId sink_pin_id : atom_netlist.net_sinks(net_id)) {
+                    AtomBlockId sink_blk_id = atom_netlist.pin_block(sink_pin_id);
+                    if (sink_blk_id.is_valid() && sink_blk_id != blk_id) {
+                        neighbor_absorption += atom_criticality[sink_blk_id] * inv_fanout;
+                    }
+                }
+                nets_processed++;
+            }
+
+            // Input-side neighbors: drivers of nets feeding this molecule
+            for (AtomPinId pin_id : atom_netlist.block_input_pins(blk_id)) {
+                AtomNetId net_id = atom_netlist.pin_net(pin_id);
+                if (!net_id.is_valid()) continue;
+                int fanout = static_cast<int>(atom_netlist.net_pins(net_id).size());
+                if (fanout > HIGH_FANOUT_SKIP || fanout <= 1) continue;
+                AtomBlockId driver_blk_id = atom_netlist.net_driver_block(net_id);
+                if (driver_blk_id.is_valid() && driver_blk_id != blk_id) {
+                    float inv_fanout = 1.0f / static_cast<float>(fanout);
+                    neighbor_absorption += atom_criticality[driver_blk_id] * inv_fanout;
+                }
+                nets_processed++;
+            }
+
+            if (nets_processed > 0) {
+                neighbor_absorption /= static_cast<float>(nets_processed);
+            }
+
             constexpr float PIN_WEIGHT = 0.;
-            constexpr float INPUT_PIN_WEIGHT = 0.5;
+            constexpr float INPUT_PIN_WEIGHT = 0.3;
             constexpr float OUTPUT_PIN_WEIGHT = 0.;
             constexpr float USED_PIN_WEIGHT = 0.;
             constexpr float USED_INPUT_PIN_WEIGHT = 0.2;
             constexpr float USED_OUTPUT_PIN_WEIGHT = 0.;
-            constexpr float BLOCKS_WEIGHT = 0.2;
+            constexpr float BLOCKS_WEIGHT = 0.1;
             constexpr float CRITICALITY_WEIGHT = 0.1;
+            constexpr float NEIGHBOR_ABSORPTION_WEIGHT = 0.3;
 
             float gain = PIN_WEIGHT * pin_ratio
                          + INPUT_PIN_WEIGHT * input_pin_ratio
@@ -116,7 +159,8 @@ static inline float get_seed_gain(AtomBlockId blk_id,
                          + USED_OUTPUT_PIN_WEIGHT * used_ext_output_pin_ratio
 
                          + BLOCKS_WEIGHT * num_blocks_ratio
-                         + CRITICALITY_WEIGHT * criticality;
+                         + CRITICALITY_WEIGHT * criticality
+                         + NEIGHBOR_ABSORPTION_WEIGHT * neighbor_absorption;
 
             return gain;
         }
