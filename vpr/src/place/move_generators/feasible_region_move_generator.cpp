@@ -87,11 +87,44 @@ e_create_move FeasibleRegionMoveGenerator::propose_move(t_pl_blocks_to_be_moved&
         min_y = max_y = from.y;
     }
 
-    //Get the most critical output of the node
-    ClusterBlockId b_output = cluster_ctx.clb_nlist.net_pin_block(net_from, pin_from);
-    t_pl_loc output_loc = block_locs[b_output].loc;
-    int xt = output_loc.x;
-    int yt = output_loc.y;
+    // Compute criticality-weighted centroid of all critical output sinks as
+    // the FR target point. This better captures the total output timing
+    // pressure for CLBs driving multiple critical nets than a single sink.
+    // Fanout filter (<=15) bounds runtime: high-fanout nets rarely have all
+    // sinks on the critical path.
+    constexpr int MAX_FANOUT_FR_TARGET = 15;
+    float out_acc_x = 0.0f;
+    float out_acc_y = 0.0f;
+    float out_acc_w = 0.0f;
+    for (ClusterPinId out_pin_id : cluster_ctx.clb_nlist.block_output_pins(b_from)) {
+        ClusterNetId out_net_id = cluster_ctx.clb_nlist.pin_net(out_pin_id);
+        if (cluster_ctx.clb_nlist.net_is_ignored(out_net_id))
+            continue;
+        if ((int)cluster_ctx.clb_nlist.net_sinks(out_net_id).size() > MAX_FANOUT_FR_TARGET)
+            continue;
+        for (ClusterPinId sink_pin_id : cluster_ctx.clb_nlist.net_sinks(out_net_id)) {
+            int ipin = cluster_ctx.clb_nlist.pin_net_index(sink_pin_id);
+            float crit = criticalities->criticality(out_net_id, ipin);
+            if (crit > placer_opts.place_crit_limit) {
+                ClusterBlockId sink_blk = cluster_ctx.clb_nlist.pin_block(sink_pin_id);
+                const t_pl_loc& sink_loc = block_locs[sink_blk].loc;
+                out_acc_x += sink_loc.x * crit;
+                out_acc_y += sink_loc.y * crit;
+                out_acc_w += crit;
+            }
+        }
+    }
+    int xt, yt;
+    if (out_acc_w > 0.0f) {
+        xt = static_cast<int>(std::round(out_acc_x / out_acc_w));
+        yt = static_cast<int>(std::round(out_acc_y / out_acc_w));
+    } else {
+        // Fallback: original behavior using the single most critical output
+        ClusterBlockId b_output = cluster_ctx.clb_nlist.net_pin_block(net_from, pin_from);
+        t_pl_loc output_loc = block_locs[b_output].loc;
+        xt = output_loc.x;
+        yt = output_loc.y;
+    }
 
     /**
      * @brief determine the feasible region
