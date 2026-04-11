@@ -189,8 +189,14 @@ void t_annealing_state::update_crit_exponent(const t_placer_opts& placer_opts) {
     // If rlim == FINAL_RLIM, then scale == 0.
     float scale = 1 - (rlim - FINAL_RLIM) * INVERSE_DELTA_RLIM;
 
-    // Apply the scaling factor on crit_exponent.
-    crit_exponent = scale * (placer_opts.td_place_exp_last - placer_opts.td_place_exp_first)
+    // Convex (quadratic) schedule: keep exponent low during early/mid anneal
+    // when timing_tradeoff is low and WL optimization dominates, then ramp
+    // sharply in the late anneal when timing focus increases.
+    // Synergizes with the 5-phase timing_tradeoff ramp (Phase 15).
+    float convex_scale = scale * scale;
+
+    // Apply the convex scaling factor on crit_exponent.
+    crit_exponent = convex_scale * (placer_opts.td_place_exp_last - placer_opts.td_place_exp_first)
                     + placer_opts.td_place_exp_first;
 }
 
