@@ -1182,6 +1182,7 @@ struct t_ap_opts {
 
 enum e_router_algorithm {
     NESTED,
+    NEWRT,
     PARALLEL,
     PARALLEL_DECOMP,
     TIMING_DRIVEN,

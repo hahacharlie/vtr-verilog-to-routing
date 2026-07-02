@@ -67,6 +67,7 @@ class NetlistRouter {
 
 /* Include the derived classes here to get the HeapType-templated impls */
 #include "SerialNetlistRouter.h"
+#include "NewrtNetlistRouter.h"
 #include "NestedNetlistRouter.h"
 #ifdef VPR_USE_TBB
 #include "ParallelNetlistRouter.h"
@@ -90,6 +91,21 @@ inline std::unique_ptr<NetlistRouter> make_netlist_router_with_heap(
     int route_verbosity) {
     if (router_opts.router_algorithm == e_router_algorithm::TIMING_DRIVEN) {
         return std::make_unique<SerialNetlistRouter<HeapType>>(
+            net_list,
+            router_lookahead,
+            router_opts,
+            connections_inf,
+            net_delay,
+            netlist_pin_lookup,
+            timing_info,
+            pin_timing_invalidator,
+            budgeting_inf,
+            routing_predictor,
+            choking_spots,
+            is_flat,
+            route_verbosity);
+    } else if (router_opts.router_algorithm == e_router_algorithm::NEWRT) {
+        return std::make_unique<NewrtNetlistRouter<HeapType>>(
             net_list,
             router_lookahead,
             router_opts,
