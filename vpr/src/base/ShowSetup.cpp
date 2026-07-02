@@ -256,6 +256,9 @@ static void ShowRouterOpts(const t_router_opts& RouterOpts) {
         case NESTED:
             VTR_LOG("NESTED\n");
             break;
+        case NEWRT:
+            VTR_LOG("NEWRT\n");
+            break;
         case PARALLEL:
             VTR_LOG("PARALLEL\n");
             break;
