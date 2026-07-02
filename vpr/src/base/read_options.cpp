@@ -331,6 +331,8 @@ struct ParseRouterAlgorithm {
         ConvertedValue<e_router_algorithm> conv_value;
         if (str == "nested")
             conv_value.set_value(NESTED);
+        else if (str == "newrt")
+            conv_value.set_value(NEWRT);
         else if (str == "parallel")
             conv_value.set_value(PARALLEL);
         else if (str == "parallel_decomp")
@@ -349,6 +351,8 @@ struct ParseRouterAlgorithm {
         ConvertedValue<std::string> conv_value;
         if (val == NESTED)
             conv_value.set_value("nested");
+        else if (val == NEWRT)
+            conv_value.set_value("newrt");
         else if (val == PARALLEL)
             conv_value.set_value("parallel");
         else if (val == PARALLEL_DECOMP)
@@ -2854,9 +2858,10 @@ argparse::ArgumentParser create_arg_parser(const std::string& prog_name, t_optio
             " * timing driven: focuses on routability and circuit speed [default]\n"
             " * parallel: timing_driven with nets in different regions of the chip routed in parallel\n"
             " * parallel_decomp: timing_driven with additional parallelism obtained by decomposing high-fanout nets, possibly reducing quality\n"
-            " * nested: parallel with parallelized path search\n")
+            " * nested: parallel with parallelized path search\n"
+            " * newrt: NEWRT, the evolved router under development\n")
         .default_value("timing_driven")
-        .choices({"nested", "parallel", "parallel_decomp", "timing_driven"})
+        .choices({"nested", "newrt", "parallel", "parallel_decomp", "timing_driven"})
         .show_in(argparse::ShowIn::HELP_ONLY);
 
     route_grp.add_argument(args.min_incremental_reroute_fanout, "--min_incremental_reroute_fanout")
